@@ -665,6 +665,17 @@ def ReplaceMoreTtManually(gm: torch.fx.GraphModule, device, use_less_ttnn_op_typ
                     )
                 return None
 
+            if node.target == torch.ops.aten.gt.Tensor:
+                # Combine this with relational_scalar_ops
+                arg1_shape = get_shape(gm, args[1])
+                if arg1_shape is not None and np.prod(arg1_shape) != 1:
+                    return g.call_function(
+                        ttnn.gt,
+                        args=args,
+                        kwargs={},
+                    )
+                return None
+
             if node.target == torch.ops.aten.full.default:
                 new_kwargs = {
                     "fill_value": args[1],
@@ -942,11 +953,6 @@ def ReplaceMoreTtManually(gm: torch.fx.GraphModule, device, use_less_ttnn_op_typ
                 return g.call_function(ttnn.split, args=new_args)
 
             if node.target == torch.ops.aten._to_copy.default:
-                # Keep it if the graph output uses this op
-                target_users_ops = [user.target for user in node.users.keys()]
-                if "output" in target_users_ops:
-                    return None
-
                 src_dtype, dst_dtype = node.args[0].meta["val"].dtype, kwargs["dtype"]
 
                 # casting to bool type is equivalent to logical_not(logical_not(x))
